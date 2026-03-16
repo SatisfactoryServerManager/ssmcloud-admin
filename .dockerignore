@@ -1,0 +1,11 @@
+.git
+.github
+release
+scripts
+
+.env
+
+web/node_modules
+web/dist
+
+**/*.exe

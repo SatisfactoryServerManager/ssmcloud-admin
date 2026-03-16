@@ -1,0 +1,14 @@
+.env
+
+# Go build outputs
+release/
+*.exe
+
+# Node
+web/node_modules/
+web/dist/
+
+# Editor/OS
+.vscode/*
+!.vscode/settings.json
+.DS_Store

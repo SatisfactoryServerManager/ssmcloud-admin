@@ -1,0 +1,100 @@
+/*
+  Satisfactory-inspired: industrial, high-contrast, utilitarian.
+  Implemented as a thin layer on top of Bootswatch (Bootstrap variables only).
+*/
+
+:root {
+    --ssm-panel-accent: var(--bs-warning);
+    --ssm-panel-accent-2: var(--bs-info);
+}
+
+body {
+    /* keep it subtle; rely on theme-provided base colors */
+    background-image:
+        radial-gradient(1200px 600px at 20% 0%, rgba(var(--bs-warning-rgb), 0.08), transparent 60%), radial-gradient(900px 500px at 90% 20%, rgba(var(--bs-info-rgb), 0.06), transparent 55%);
+    background-attachment: fixed;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+    letter-spacing: 0.02em;
+}
+
+.nav-tabs {
+    border-bottom-color: rgba(var(--bs-body-color-rgb), 0.2);
+}
+
+.nav-tabs .nav-link {
+    border: 1px solid transparent;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.85rem;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: rgba(var(--bs-body-color-rgb), 0.2);
+}
+
+.nav-tabs .nav-link.active {
+    border-color: rgba(var(--bs-body-color-rgb), 0.25);
+    border-bottom-color: transparent;
+}
+
+.card {
+    border-color: rgba(var(--bs-body-color-rgb), 0.18) !important;
+    border-left-width: 0.25rem;
+    border-left-color: var(--ssm-panel-accent) !important;
+}
+
+.card .card-body {
+    /* tighter, more “panel” like */
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+code {
+    color: var(--ssm-panel-accent-2);
+}
+
+.btn {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.btn-danger {
+    text-transform: uppercase;
+}
+
+.table {
+    --bs-table-bg: transparent;
+}
+
+.modal-content {
+    border-color: rgba(var(--bs-body-color-rgb), 0.2);
+}
+
+/* Read-only inputs should be visually distinct from editable fields */
+.form-control[readonly],
+.form-control:read-only,
+textarea.form-control[readonly],
+textarea.form-control:read-only {
+    background-color: var(--bs-secondary-bg);
+    border-color: rgba(var(--bs-body-color-rgb), 0.28);
+    color: var(--bs-body-color);
+}
+
+.form-control[readonly]:focus,
+.form-control:read-only:focus,
+textarea.form-control[readonly]:focus,
+textarea.form-control:read-only:focus {
+    box-shadow: none;
+    border-color: rgba(var(--bs-body-color-rgb), 0.28);
+}
+
+.form-control[readonly],
+.form-control:read-only {
+    cursor: default;
+}

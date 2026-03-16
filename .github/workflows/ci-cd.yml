@@ -1,0 +1,104 @@
+name: ssmcloud-admin CI/CD
+
+on:
+    pull_request:
+    push:
+        branches:
+            - "**"
+        tags:
+            - "v*"
+
+permissions:
+    contents: read
+
+jobs:
+    build-and-push:
+        name: Build + Docker (Linux)
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version-file: go.mod
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+                  cache-dependency-path: web/package-lock.json
+
+            - name: Remove local replace (CI uses published module)
+              run: |
+                  python3 - <<'PY'
+                  import re
+                  from pathlib import Path
+
+                  p = Path('go.mod')
+                  s = p.read_text(encoding='utf-8').splitlines(True)
+                  out = []
+                  for line in s:
+                      if re.match(r'^replace\s+.*ssmcloud-resources\s+=>', line):
+                          continue
+                      out.append(line)
+                  p.write_text(''.join(out), encoding='utf-8')
+                  PY
+
+            - name: Go deps + tests
+              run: |
+                  go mod tidy
+                  go test ./...
+
+            - name: Install web deps
+              run: npm ci
+              working-directory: web
+
+            - name: Build web
+              run: npm run build
+              working-directory: web
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Docker build (no push)
+              if: ${{ !(github.event_name == 'push' && (github.ref_name == 'dev' || startsWith(github.ref, 'refs/tags/v'))) }}
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  platforms: linux/amd64
+                  push: false
+                  tags: ssmcloud-admin:ci
+
+            - name: Login to Docker Hub
+              if: github.event_name == 'push' && (github.ref_name == 'dev' || startsWith(github.ref, 'refs/tags/v'))
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Docker metadata
+              id: meta
+              if: github.event_name == 'push' && (github.ref_name == 'dev' || startsWith(github.ref, 'refs/tags/v'))
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ secrets.DOCKERHUB_USERNAME }}/ssmcloud-admin
+                  tags: |
+                      type=ref,event=branch
+                      type=ref,event=tag
+
+            - name: Docker build + push
+              if: github.event_name == 'push' && (github.ref_name == 'dev' || startsWith(github.ref, 'refs/tags/v'))
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max

@@ -1,0 +1,8 @@
+{
+    // Ensure VS Code uses the workspace TypeScript (needed for Vue 3 + exports typings)
+    "typescript.tsdk": "web/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+
+    // Vue tooling (Volar / Vue - Official)
+    "vue.server.useWorkspaceTsdk": true
+}
