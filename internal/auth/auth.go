@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
 )
@@ -20,9 +21,9 @@ import (
 const requiredAdminGroup = "authentikAdmins"
 
 type Service struct {
-	appURL      string
-	baseAuthURL string
-    providerName string
+	appURL       string
+	baseAuthURL  string
+	providerName string
 
 	oauth2Config *oauth2.Config
 	verifier     *oidc.IDTokenVerifier
@@ -111,43 +112,42 @@ func New(ctx context.Context) (*Service, error) {
 
 func (s *Service) Enabled() bool { return s != nil }
 
-func (s *Service) Routes() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/auth/login", s.handleLogin)
-	mux.HandleFunc("/auth/callback", s.handleCallback)
-	mux.HandleFunc("/auth/logout", s.handleLogout)
-	return mux
+// RegisterRoutes registers OIDC auth endpoints on a gin router.
+func (s *Service) RegisterRoutes(r gin.IRouter) {
+	r.GET("/auth/login", gin.WrapF(s.handleLogin))
+	r.GET("/auth/callback", gin.WrapF(s.handleCallback))
+	r.GET("/auth/logout", gin.WrapF(s.handleLogout))
 }
 
-func (s *Service) RequireAdmin(next http.Handler) http.Handler {
+// RequireAdmin returns a gin middleware that enforces admin session auth.
+func (s *Service) RequireAdmin() gin.HandlerFunc {
 	if s == nil {
-		return next
+		return func(c *gin.Context) { c.Next() }
 	}
+	return func(c *gin.Context) {
+		ok, err := s.isAdminRequest(c.Request)
+		if err != nil || !ok {
+			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			} else {
+				c.Redirect(http.StatusFound, "/auth/login")
+			}
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always allow auth endpoints.
-		if strings.HasPrefix(r.URL.Path, "/auth/") {
-			next.ServeHTTP(w, r)
-			return
+// DisabledGinHandler returns a gin handler that rejects all requests when auth is not configured.
+func DisabledGinHandler(missing []string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		msg := "auth not configured"
+		if len(missing) > 0 {
+			msg = msg + ": missing " + strings.Join(missing, ", ")
 		}
-		// Allow unauthenticated health checks.
-		if r.URL.Path == "/api/health" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		ok, err := s.isAdminRequest(r)
-		if err != nil {
-			unauthorized(w, r)
-			return
-		}
-		if !ok {
-			unauthorized(w, r)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
+		c.String(http.StatusServiceUnavailable, msg)
+	}
 }
 
 func (s *Service) isAdminRequest(r *http.Request) (bool, error) {
@@ -160,16 +160,6 @@ func (s *Service) isAdminRequest(r *http.Request) (bool, error) {
 		return false, nil
 	}
 	return v, nil
-}
-
-func unauthorized(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/api/") {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
-		return
-	}
-	http.Redirect(w, r, "/auth/login", http.StatusFound)
 }
 
 func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -279,7 +269,7 @@ func (s *Service) authentikLogoutURL(idToken string) (string, error) {
 	if s.baseAuthURL == "" || s.oauth2Config == nil {
 		return "", errors.New("auth not configured")
 	}
-	endSessionURL := s.baseAuthURL + "/application/o/"+s.providerName+"/end-session/"
+	endSessionURL := s.baseAuthURL + "/application/o/" + s.providerName + "/end-session/"
 	params := url.Values{}
 	params.Set("client_id", s.oauth2Config.ClientID)
 	params.Set("post_logout_redirect_uri", strings.TrimRight(s.appURL, "/"))

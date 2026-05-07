@@ -12,3 +12,7 @@ web/dist/
 .vscode/*
 !.vscode/settings.json
 .DS_Store
+
+.next
+
+web/out

@@ -7,7 +7,7 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 
 COPY web/ ./
-RUN npm run build
+RUN NEXT_STATIC_BUILD=1 npm run build
 
 
 FROM golang:1.25-alpine AS go
@@ -30,7 +30,7 @@ WORKDIR /app
 RUN adduser -D -H -s /sbin/nologin appuser
 
 COPY --from=go /out/ssmcloud-admin ./ssmcloud-admin
-COPY --from=web /src/web/dist ./web/dist
+COPY --from=web /src/web/out ./web/out
 COPY .env.example ./.env.example
 
 USER appuser

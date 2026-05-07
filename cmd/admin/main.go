@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
 	"github.com/SatisfactoryServerManager/ssmcloud-admin/internal/auth"
@@ -36,23 +37,38 @@ func main() {
 		adminKey = os.Getenv("SECRET_KEY")
 	}
 
+	if os.Getenv("APP_MODE") != "development" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	ctx := context.Background()
 	authSvc, err := auth.New(ctx)
 	if err != nil {
 		log.Fatalf("failed to initialize authentik auth: %v", err)
 	}
-	grpc, err := grpcclient.Dial(ctx, grpcclient.Config{BackendAddr: backendAddr, AdminKey: adminKey})
+
+	grpcClient, err := grpcclient.Dial(ctx, grpcclient.Config{BackendAddr: backendAddr, AdminKey: adminKey})
 	if err != nil {
 		log.Fatalf("failed to dial backend gRPC: %v", err)
 	}
-	defer grpc.Conn.Close()
+	defer grpcClient.Conn.Close()
 
-	api := httpapi.New(grpc.Admin)
-	mux := http.NewServeMux()
+	api := httpapi.New(grpcClient.Admin)
+
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
+
+	// Health endpoint — always accessible, no auth required.
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
 	if authSvc != nil {
 		log.Printf("auth enabled; protecting /api and SPA")
-		mux.Handle("/auth/", authSvc.Routes())
-		mux.Handle("/api/", authSvc.RequireAdmin(api.Routes()))
+		authSvc.RegisterRoutes(r)
+		protected := r.Group("/")
+		protected.Use(authSvc.RequireAdmin())
+		api.RegisterRoutes(protected.Group("/api"))
 	} else {
 		missing := auth.MissingEnv()
 		if len(missing) > 0 {
@@ -60,35 +76,44 @@ func main() {
 		} else {
 			log.Printf("auth disabled")
 		}
-		mux.Handle("/auth/", auth.DisabledHandler(missing))
-		mux.Handle("/api/", api.Routes())
+		r.Any("/auth/*path", auth.DisabledGinHandler(missing))
+		api.RegisterRoutes(r.Group("/api"))
 	}
 
-	// In production, serve the built Vite app if it exists.
-	// In development, run Vite and use its dev server (proxying /api to this process).
-	distDir := filepath.Join("web", "dist")
+	// In production, serve the built Next.js static export from web/out.
+	// In development, the Next.js dev server proxies /api requests to this process.
+	distDir := filepath.Join("web", "out")
 	if stat, err := os.Stat(distDir); err == nil && stat.IsDir() {
-		fs := http.FileServer(http.Dir(distDir))
-		spa := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Serve index.html for SPA routes that don't map to a file
-			p := filepath.Join(distDir, filepath.Clean(r.URL.Path))
-			if info, err := os.Stat(p); err == nil && !info.IsDir() {
-				fs.ServeHTTP(w, r)
+		r.Static("/_next", filepath.Join(distDir, "_next"))
+
+		spaHandler := func(c *gin.Context) {
+			reqPath := filepath.Clean(c.Request.URL.Path)
+			// Try exact file
+			if tryFile(c, filepath.Join(distDir, reqPath)) {
 				return
 			}
-			r.URL.Path = "/"
-			fs.ServeHTTP(w, r)
-		})
+			// Try <path>.html (Next.js static export)
+			if tryFile(c, filepath.Join(distDir, reqPath+".html")) {
+				return
+			}
+			// Try <path>/index.html
+			if tryFile(c, filepath.Join(distDir, reqPath, "index.html")) {
+				return
+			}
+			// Fallback to root
+			c.File(filepath.Join(distDir, "index.html"))
+		}
+
 		if authSvc != nil {
-			mux.Handle("/", authSvc.RequireAdmin(spa))
+			r.NoRoute(authSvc.RequireAdmin(), spaHandler)
 		} else {
-			mux.Handle("/", spa)
+			r.NoRoute(spaHandler)
 		}
 	}
 
 	httpServer := &http.Server{
 		Addr:              httpAddr,
-		Handler:           mux,
+		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -106,4 +131,14 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
+	log.Println("server stopped")
+}
+
+func tryFile(c *gin.Context, path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	c.File(path)
+	return true
 }
