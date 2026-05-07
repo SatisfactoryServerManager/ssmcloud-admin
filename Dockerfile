@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS web
+FROM node:26-alpine AS web
 WORKDIR /src/web
 
 COPY web/package.json web/package-lock.json ./
@@ -10,7 +10,7 @@ COPY web/ ./
 RUN NEXT_STATIC_BUILD=1 npm run build
 
 
-FROM golang:1.25-alpine AS go
+FROM golang:1.26-alpine AS go
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -24,7 +24,7 @@ COPY internal/ ./internal/
 RUN GOOS=linux GOARCH=amd64 go build -o /out/ssmcloud-admin ./cmd/admin
 
 
-FROM alpine:3.20
+FROM alpine:3.23
 WORKDIR /app
 
 RUN adduser -D -H -s /sbin/nologin appuser

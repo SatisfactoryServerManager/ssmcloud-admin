@@ -3,7 +3,7 @@ module github.com/SatisfactoryServerManager/ssmcloud-admin
 go 1.25.0
 
 require (
-	github.com/SatisfactoryServerManager/ssmcloud-resources v0.0.87
+	github.com/SatisfactoryServerManager/ssmcloud-resources v0.0.88
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gorilla/sessions v1.4.0
